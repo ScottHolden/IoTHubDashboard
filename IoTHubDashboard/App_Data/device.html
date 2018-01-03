@@ -1,0 +1,80 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>IoT Hub Device Demo</title>
+</head>
+<body>
+    <div id="demo">Loading...</div>
+    <script src="https://unpkg.com/mqtt@2.14.0/dist/mqtt.min.js"></script>
+    <script>
+        var xmlhttp = new XMLHttpRequest();
+        var demoDiv = document.getElementById("demo");
+        var storageEnabled = (typeof (Storage) !== "undefined");
+        var deviceIdStorageKey = "deviceID";
+        var deviceId = "";
+        if (storageEnabled) {
+            deviceId = localStorage.getItem(deviceIdStorageKey) || "";
+        }
+        var client;
+        var timeout = 1000;
+
+        xmlhttp.onreadystatechange = function () {
+            if (xmlhttp.readyState == XMLHttpRequest.DONE) {
+                if (xmlhttp.status == 200) {
+                    var info = JSON.parse(xmlhttp.responseText);
+                    deviceId = info.DeviceID;
+
+                    if (storageEnabled) {
+                        localStorage.setItem(deviceIdStorageKey, deviceId);
+                    }
+
+                    client = mqtt.connect("wss://" + info.HostName + "/$iothub/websocket?iothub-no-client-cert=true", {
+                        clientId: deviceId,
+                        username: info.HostName + "/" + deviceId + "/api-version=2016-11-14",
+                        password: info.Password
+                    });
+
+                    trigger();
+                }
+                else {
+                    demoDiv.innerText = "Unable to provision device on IoT Hub.";
+                }
+            }
+        };
+        xmlhttp.open("POST", "/api/device/connect/" + deviceId, true);
+        xmlhttp.send();
+
+        var ax = 0;
+        var ay = 0;
+        var az = 0;
+        var g = 0;
+
+        window.ondevicemotion = function (e) {
+            ax = e.accelerationIncludingGravity.x;
+            ay = e.accelerationIncludingGravity.y;
+            az = e.accelerationIncludingGravity.z;
+            g = Math.sqrt(ax * ax + ay * ay + az * az) / 9.8;
+        }
+
+        function publish() {
+            m = {
+                ax: ax,
+                ay: ay,
+                az: az,
+                g: g
+            };
+            console.log(m);
+            client.publish("devices/" + deviceId + "/messages/events/", JSON.stringify(m));
+            demoDiv.innerHTML = "<p>X: " + ax + "</p><p>Y: " + ay + "</p><p>Z: " + az + "</p><p>G: " + g + "</p>";
+        }
+
+        function trigger() {
+            setTimeout(trigger, timeout);
+            publish();
+        }
+    </script>
+</body>
+</html>
+</html>

@@ -1,0 +1,26 @@
+﻿{
+  "$schema": "http://json.schemastore.org/proxies",
+  "proxies": {
+    "device": {
+      "matchCondition": {
+        "methods": [ "GET" ],
+        "route": "/device"
+      },
+      "backendUri": "https://%WEBSITE_HOSTNAME%/api/static/device"
+    },
+    "root": {
+      "matchCondition": {
+        "methods": [ "GET" ],
+        "route": "/"
+      },
+      "backendUri": "https://%WEBSITE_HOSTNAME%/api/static/device"
+    },
+    "dashboard": {
+      "matchCondition": {
+        "methods": [ "GET" ],
+        "route": "/dashboard"
+      },
+      "backendUri": "https://%WEBSITE_HOSTNAME%/api/static/dashboard"
+    }
+  }
+}

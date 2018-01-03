@@ -1,0 +1,55 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>IoT Hub Device Demo</title>
+</head>
+<body>
+    <div id="demo">Loading...</div>
+    <script src="https://unpkg.com/mqtt@2.14.0/dist/mqtt.min.js"></script>
+    <script>
+        var xmlhttp = new XMLHttpRequest();
+        var demoDiv = document.getElementById("demo");
+        var storageEnabled = (typeof (Storage) !== "undefined");
+        var deviceIdStorageKey = "deviceID";
+        var deviceId = "";
+        if (storageEnabled) {
+            deviceId = localStorage.getItem(deviceIdStorageKey) || "";
+        }
+        var clientSend = false;
+        var deviceName = "";
+        var client;
+
+        xmlhttp.onreadystatechange = function () {
+            if (xmlhttp.readyState == XMLHttpRequest.DONE) {
+                if (xmlhttp.status == 200) {
+                    var info = JSON.parse(xmlhttp.responseText);
+                    deviceName = info.DeviceID;
+
+                    client = mqtt.connect("wss://" + info.HostName + "/$iothub/websocket?iothub-no-client-cert=true", {
+                        clientId: deviceName,
+                        username: info.HostName + "/" + deviceName + "/api-version=2016-11-14",
+                        password: info.Password
+                    });
+                    client.on("reconnect", function () {
+                        demoDiv.innerText = "Hmm, looks like you disconnected, did someone else open the dashboard?";
+                        client.end();
+                    });
+
+                    client.subscribe("devices/" + deviceName + "/messages/devicebound/#")
+                    client.on("message", function (topic, payload) {
+                        console.log([topic, payload].join(": "));
+                    });
+                }
+                else {
+                    demoDiv.innerText = "Unable to provision device on IoT Hub.";
+                }
+            }
+        };
+        xmlhttp.open("POST", "/api/device/connect/" + deviceId, true);
+        xmlhttp.send();
+    </script>
+</body>
+</html>
+</html>

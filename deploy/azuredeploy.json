@@ -1,0 +1,208 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "name": {
+            "type":"string",
+            "minLength": 1,
+            "maxLength": 4,
+            "defaultValue": "dev"
+        }
+    },
+    "variables": {
+        "location": "[resourceGroup().location]",
+        "name": "[tolower(parameters('name'))]",
+
+        "entropy": "[uniqueString(resourceGroup().id, variables('name'))]",
+
+        "functionName": "[concat(variables('name'), 'func', variables('entropy'))]",
+        "functionAppSvcName": "[variables('functionName')]",
+
+        "functionStreamTriggerName": "StreamTrigger",
+        
+        "functionStorageName": "[take(concat(variables('name'), 'sto', variables('entropy')), 20)]",
+
+        "functionStorageId": "[resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageName'))]",
+        "functionStorageConnectionPrefix": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageName'), ';AccountKey=')]",
+
+        "streamAnalyticsJobName": "[concat(variables('name'), 'stream', variables('entropy'))]",
+
+        "streamAnalyticsIoTHubInputName": "iothub",
+        "streamAnalyticsFunctionsOutputName": "functionsstream",
+
+        "iotHubName": "[concat(variables('name'), 'iot', variables('entropy'))]",
+        "iotHubDeviceCGName": "devicecg",
+        "iotHubDashboardCGName": "webdashcg",
+
+        "iotHubKeyName": "iothubowner",
+        "iotHubKeyResource": "[resourceId('Microsoft.Devices/Iothubs/Iothubkeys', variables('iotHubName'), variables('iotHubKeyName'))]",
+        "iotHubKeyConnectionStringPrefix": "[concat('HostName=', variables('iotHubName'), '.azure-devices.net;SharedAccessKeyName=', variables('iotHubKeyName'), ';SharedAccessKey=')]"
+    },
+    "resources": [{
+            "apiVersion": "2015-06-15",
+            "type": "Microsoft.Storage/storageAccounts",
+
+            "name": "[variables('functionStorageName')]",
+            "location": "[variables('location')]",
+
+            "properties": {
+                "accountType": "Standard_LRS"
+            }
+        },
+        {
+            "apiVersion": "2015-04-01",
+            "type": "Microsoft.Web/serverfarms",
+
+            "name": "[variables('functionAppSvcName')]",
+            "location": "[variables('location')]",
+
+            "properties": {
+                "name": "[variables('functionAppSvcName')]",
+                "computeMode": "Dynamic",
+                "sku": "Dynamic"
+            }
+        },
+        {
+            "apiVersion": "2015-08-01",
+            "type": "Microsoft.Web/sites",
+
+            "name": "[variables('functionName')]",
+            "location": "[variables('location')]",
+
+            "dependsOn": [
+                "[concat('Microsoft.Web/serverfarms/', variables('functionAppSvcName'))]"
+            ],
+
+            "kind": "functionapp",
+            "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('functionAppSvcName'))]"
+            },
+
+            "resources": [
+                {
+                    "apiVersion": "2015-08-01",
+                    "type": "Microsoft.Web/sites/config",
+        
+                    "name": "[concat(variables('functionName'), '/appsettings')]",
+        
+                    "dependsOn": [
+                        "[concat('Microsoft.Web/sites/', variables('functionName'))]",
+                        "[concat('Microsoft.Devices/IotHubs/', variables('iotHubName'))]"
+                    ],
+        
+                    "properties": {
+                        "AzureWebJobsDashboard": "[concat(variables('functionStorageConnectionPrefix'), listKeys(variables('functionStorageId'), '2015-05-01-preview').key1)]",
+                        "AzureWebJobsStorage": "[concat(variables('functionStorageConnectionPrefix'), listKeys(variables('functionStorageId'), '2015-05-01-preview').key1)]",
+                        "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING": "[concat(variables('functionStorageConnectionPrefix'), listKeys(variables('functionStorageId'), '2015-05-01-preview').key1)]",
+                        "WEBSITE_CONTENTSHARE": "[toLower(variables('functionName'))]",
+                        "FUNCTIONS_EXTENSION_VERSION": "~1",
+                        "FUNCTION_APP_EDIT_MODE": "readonly",
+                        
+                        "IoTHubConnectionString": "[concat(variables('iotHubKeyConnectionStringPrefix'), listkeys(variables('iotHubKeyResource'), '2016-02-03').primaryKey)]",
+                        "IoTHubHostName": "[concat(variables('iotHubName'), '.azure-devices.net')]"
+                    }
+                }
+            ]
+        },
+        {
+            "apiVersion": "2016-02-03",
+            "type": "Microsoft.Devices/IotHubs",
+
+            "name": "[variables('iotHubName')]",
+            "location": "[variables('location')]",
+
+            "sku": {
+              "name": "S1",
+              "tier": "Standard",
+              "capacity": 1
+            },
+            "properties": {
+              "location": "[variables('location')]"
+            },
+
+            "resources": [
+                {
+                    "apiVersion": "2016-02-03",
+                    "type": "Microsoft.Devices/IotHubs/eventhubEndpoints/ConsumerGroups",
+
+                    "name": "[concat(variables('iotHubName'), '/events/', variables('iotHubDeviceCGName'))]",
+
+                    "dependsOn": [
+                      "[concat('Microsoft.Devices/Iothubs/', variables('iotHubName'))]"
+                    ]
+                  },
+                  {
+                    "apiVersion": "2016-02-03",
+                    "type": "Microsoft.Devices/IotHubs/eventhubEndpoints/ConsumerGroups",
+
+                    "name": "[concat(variables('iotHubName'), '/events/', variables('iotHubDashboardCGName'))]",
+
+                    "dependsOn": [
+                      "[concat('Microsoft.Devices/Iothubs/', variables('iotHubName'))]"
+                    ]
+                  }
+            ]
+          },
+          {
+            "apiVersion": "2016-03-01",
+            "name": "[variables('streamAnalyticsJobName')]",
+            "location": "[variables('location')]",
+            "type": "Microsoft.StreamAnalytics/StreamingJobs",
+            "dependsOn": [
+              "[concat('Microsoft.Devices/IotHubs/', variables('iotHubName'))]"
+            ],
+            "properties": {
+              "sku": {
+                "name": "Standard"
+              },
+              "inputs": [
+                {
+                  "Name": "[variables('streamAnalyticsIoTHubInputName')]",
+                  "Properties": {
+                    "DataSource": {
+                      "Properties": {
+                        "consumerGroupName": "[variables('iotHubDeviceCGName')]",
+                        "iotHubNamespace": "[variables('iotHubName')]",
+                        "sharedAccessPolicyKey": "[listkeys(variables('iotHubKeyResource'), '2016-02-03').primaryKey]",
+                        "sharedAccessPolicyName": "[variables('iotHubKeyName')]",
+                        "endpoint": "messages/events"
+                      },
+                      "Type": "Microsoft.Devices/IotHubs"
+                    },
+                    "Serialization": {
+                      "Properties": {
+                        "Encoding": "UTF8"
+                      },
+                      "Type": "Json"
+                    },
+                    "Type": "Stream"
+                  }
+                }
+              ],
+              "transformation": {
+                "name": "Transformation",
+                "properties": {
+                  "streamingUnits": 1,
+                  "query": "[concat('SELECT * INTO ', variables('streamAnalyticsFunctionsOutputName'), ' FROM ', variables('streamAnalyticsIoTHubInputName'))]"
+                }
+              },
+              "outputs": [
+                {    
+                    "name":"[variables('streamAnalyticsFunctionsOutputName')]",  
+                    "properties": {
+                        "datasource": {
+                          "type": "Microsoft.AzureFunction",
+                          "properties": {
+                            "functionAppName": "[variables('functionName')]",
+                            "functionName": "[variables('functionStreamTriggerName')]",
+                            "apiKey": "nada"
+                          }
+                        }
+                    } 
+                 }  
+              ]
+            }
+          }
+          
+    ]
+}
